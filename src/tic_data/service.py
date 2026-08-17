@@ -16,7 +16,7 @@ from .web import HTML_PAGE
 
 app = FastAPI(
     title="TIC data",
-    version="0.2.0",
+    version="0.2.1",
     description="Map, stream, and filter Transparency in Coverage machine-readable files.",
 )
 
