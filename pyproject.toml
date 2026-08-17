@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tic-data"
+version = "0.1.0"
+description = "Stream, filter, and export Transparency in Coverage machine-readable data."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.116,<1",
+  "httpx>=0.28,<1",
+  "ijson>=3.4,<4",
+  "pydantic>=2.11,<3",
+  "python-multipart>=0.0.20,<1",
+  "uvicorn[standard]>=0.35,<1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.4,<9"]
+
+[project.scripts]
+tic-data = "tic_data.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tic_data"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
