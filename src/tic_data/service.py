@@ -128,5 +128,6 @@ def _result_payload(result) -> dict:
         "matched_providers": [asdict(row) for row in result.matched_providers],
         "rate_count": len(result.rates),
         "truncated": result.truncated,
+        "diagnostics": result.diagnostics,
         "rates": result.rates,
     }
