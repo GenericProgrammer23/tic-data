@@ -184,11 +184,12 @@ async function parseResponse(response) { const data=await response.json(); if(!r
 function renderCatalog() {
   const plan=$('planFilter').value.trim().toLowerCase(), search=$('networkFilter').value.trim().toLowerCase();
   const rows=catalog.filter(r => (!plan || r.plan_names.some(x=>x.toLowerCase().includes(plan))) && (!search || (r.network+' '+r.description+' '+r.source).toLowerCase().includes(search)));
-  $('networkSelect').innerHTML=rows.map(r=>`<option value="${esc(r.location)}">${esc(r.network)} — ${esc(r.source)} — ${esc(r.file_format)} (${r.plan_sponsor_count} sponsors)</option>`).join('');
+  $('networkSelect').innerHTML='<option value="">-- Select a network intentionally --</option>'+rows.map(r=>`<option value="${esc(r.location)}">${esc(r.network)} — ${esc(r.source)} — ${esc(r.file_format)} (${r.plan_sponsor_count} sponsors)</option>`).join('');
+  if(rows.length===1) $('networkSelect').value=rows[0].location;
   $('networkCard').classList.remove('hidden'); updateNetworkDetail();
 }
-function selectedNetwork() { return catalog.find(r=>r.location === $('networkSelect').value); }
-function updateNetworkDetail() { const r=selectedNetwork(); if(!r){ $('networkDetail').textContent='No matching networks.'; return; } $('networkDetail').textContent=`${r.description}\nPlan types: ${r.plan_names.join(', ') || 'n/a'}\nReferenced by ${r.plan_sponsor_count} plan sponsors. Format: ${r.file_format}.`; }
+function selectedNetwork() { const value=$('networkSelect').value; return value ? catalog.find(r=>r.location === value) : null; }
+function updateNetworkDetail() { const r=selectedNetwork(); if(!r){ $('networkDetail').textContent='Select the specific network you want to search. For standard Cigna OAP comparisons, start by filtering/searching for National OAP rather than using an affiliate network.'; return; } $('networkDetail').textContent=`${r.description}\nSource: ${r.source}\nPlan types: ${r.plan_names.join(', ') || 'n/a'}\nReferenced by ${r.plan_sponsor_count} plan sponsors. Format: ${r.file_format}.`; }
 async function loadCatalogFromUpload() {
   const file=$('indexFile').files[0]; if(!file) return setStatus('indexStatus','Choose an index file first.','error');
   setStatus('indexStatus','Reading and normalizing index…'); const form=new FormData(); form.append('file',file);
@@ -202,7 +203,7 @@ async function loadCatalogFromUrl() {
   catch(e){ setStatus('indexStatus',e.message,'error'); }
 }
 async function findRatesFromUrl() {
-  const network=selectedNetwork(); if(!network) return setStatus('rateStatus','Load an index and choose a network first.','error');
+  const network=selectedNetwork(); if(!network) return setStatus('rateStatus','Choose a specific network/rate file first.','error');
   try { const body={url:network.location,organization:providerPayload(),filters:filtersPayload()}; setStatus('rateStatus',`Downloading/searching ${network.network}. Large national files can take substantial time and disk space…`); const data=await parseResponse(await fetch('/extract/url',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})); renderRates(data,network.network); }
   catch(e){ setStatus('rateStatus',e.message,'error'); }
 }
