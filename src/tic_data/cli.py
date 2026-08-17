@@ -9,7 +9,7 @@ from .export import rates_to_csv
 from .models import OrganizationSelector, RateFilters
 from .parser import extract_rates
 from .source import local_source_from_url
-from .toc import discover_in_network_files
+from .toc import catalog_in_network_files, discover_in_network_files
 
 
 def main() -> None:
@@ -32,20 +32,29 @@ def main() -> None:
     extract.add_argument("--format", choices=["json", "csv"], default="json")
     extract.add_argument("--output", type=Path)
 
-    toc = sub.add_parser("toc", help="Find in-network URLs in a TiC table-of-contents")
-    toc_source = toc.add_mutually_exclusive_group(required=True)
-    toc_source.add_argument("--file", type=Path)
-    toc_source.add_argument("--url")
-    toc.add_argument("--plan-name")
-    toc.add_argument("--issuer-name")
-    toc.add_argument("--plan-id")
-    toc.add_argument("--plan-sponsor-name")
+    toc = sub.add_parser("toc", help="Find plan-linked in-network URLs in a TiC table-of-contents")
+    _add_toc_args(toc)
+
+    catalog = sub.add_parser("catalog", help="Build a deduplicated network/file catalog from a TiC index")
+    _add_toc_args(catalog)
 
     args = parser.parse_args()
     if args.command == "extract":
         _extract(args)
+    elif args.command == "catalog":
+        _catalog(args)
     else:
         _toc(args)
+
+
+def _add_toc_args(command: argparse.ArgumentParser) -> None:
+    source = command.add_mutually_exclusive_group(required=True)
+    source.add_argument("--file", type=Path)
+    source.add_argument("--url")
+    command.add_argument("--plan-name")
+    command.add_argument("--issuer-name")
+    command.add_argument("--plan-id")
+    command.add_argument("--plan-sponsor-name")
 
 
 def _extract(args: argparse.Namespace) -> None:
@@ -89,19 +98,25 @@ def _extract(args: argparse.Namespace) -> None:
         print(payload)
 
 
-def _toc(args: argparse.Namespace) -> None:
-    def run(path: Path) -> list[dict]:
-        return discover_in_network_files(
-            path,
-            plan_name=args.plan_name,
-            issuer_name=args.issuer_name,
-            plan_id=args.plan_id,
-            plan_sponsor_name=args.plan_sponsor_name,
-        )
+def _toc_kwargs(args: argparse.Namespace) -> dict:
+    return {
+        "plan_name": args.plan_name,
+        "issuer_name": args.issuer_name,
+        "plan_id": args.plan_id,
+        "plan_sponsor_name": args.plan_sponsor_name,
+    }
 
+
+def _run_source(args: argparse.Namespace, function):
     if args.url:
         with local_source_from_url(args.url) as path:
-            rows = run(path)
-    else:
-        rows = run(args.file)
-    print(json.dumps(rows, indent=2))
+            return function(path, **_toc_kwargs(args))
+    return function(args.file, **_toc_kwargs(args))
+
+
+def _toc(args: argparse.Namespace) -> None:
+    print(json.dumps(_run_source(args, discover_in_network_files), indent=2))
+
+
+def _catalog(args: argparse.Namespace) -> None:
+    print(json.dumps(_run_source(args, catalog_in_network_files), indent=2))
