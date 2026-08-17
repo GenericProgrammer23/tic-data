@@ -26,14 +26,20 @@ The main workflow is:
   - number of plan sponsors referencing the rate file;
   - sample plan sponsors.
 - Matches providers by NPI, TIN/EIN, or `tin.business_name`.
+- Treats punctuated and unpunctuated TINs as equivalent; for example, `12-3456789` and `123456789` match the same provider value.
 - Resolves root-level `provider_references` and embedded `provider_groups`.
 - Filters rates by billing code, billing-code type, place of service, billing class, and negotiated type.
+- Provides extraction diagnostics when a search returns zero rows.
 - JSON and CSV output.
 - CLI and FastAPI endpoints for automation.
 
 ## Install and run the browser app
 
 Python 3.11+ is required.
+
+The easiest Windows option is the standalone `Run_TIC_Data.py` launcher. It downloads/updates the application, prepares its private Python environment, starts the server, and opens the browser.
+
+Manual setup is also supported:
 
 ```bash
 python -m venv .venv
@@ -77,12 +83,32 @@ In the browser:
 2. TIC data scans the index and displays the unique rate files/networks once.
 3. Filter by plan type such as `OAP`, `Local Plus`, `HMO`, or `PPO`, or search the network name.
 4. Select a network such as **National OAP**, **Pathwell OAP**, or **Arizona HMO**.
-5. Enter your provider TIN/EIN and/or NPI.
-6. Enter billing codes such as `97110`, `97112`, `97140`, and `97530`.
+5. Enter your provider TIN/EIN and/or NPI. A TIN may be entered as either `12-3456789` or `123456789`; punctuation is ignored during matching.
+6. Enter a billing code and type a comma or press Enter. Each accepted code appears as a removable chip so you can confirm exactly what will be searched.
 7. Click **Find negotiated rates**.
 8. Review the results and download CSV.
 
 The application preserves the current signed URL from the index for downloading, while using a signature-free canonical URL only for deduplication.
+
+## Troubleshooting zero results
+
+When a search completes with zero rates, expand **Troubleshooting details**. TIC data now reports the major stages of the extraction so you can identify where the match stopped:
+
+- **Requested codes seen** — confirms whether the selected rate file actually contains the CPT/HCPCS codes you requested.
+- **Provider groups matched** — confirms whether the TIN/NPI/business name matched the provider data in the file.
+- **Service rows after filters** — shows whether code type or other service-level filters excluded the requested services.
+- **Rate groups linked to provider** — confirms whether the payer linked the matched provider group to a negotiated-rate record for the requested code.
+- **Price rows after filters** — confirms whether billing class, place of service, or negotiated-type filters removed the remaining prices.
+- **Billing classes present** — shows the classes actually found on linked prices; if the app is filtering for `professional` and only `institutional` is present, set Billing class to **any** and retry.
+
+A useful troubleshooting order is:
+
+1. verify the normalized TIN shown by the app;
+2. confirm **Requested codes seen** contains your requested code;
+3. confirm **Provider groups matched** is greater than zero;
+4. if the provider matched but no rate groups were linked, try another network variant from the index;
+5. if rate groups were linked but price rows are zero, set Billing class to **any** and retry;
+6. if the TIN does not match, try the organization's Type 2 NPI and then the business name to determine how the payer represented the provider.
 
 ## Direct rate-file upload
 
@@ -177,6 +203,8 @@ tic-data extract \
   }
 }
 ```
+
+Extraction responses include a `diagnostics` object in addition to the matching providers and rate rows.
 
 Use `POST /extract/url.csv` for CSV output.
 
