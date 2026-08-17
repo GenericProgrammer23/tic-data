@@ -5,19 +5,25 @@ from dataclasses import asdict
 from typing import Annotated
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 
 from .export import rates_to_csv
 from .models import OrganizationSelector, RateFilters, TocRequest, UrlExtractionRequest
 from .parser import extract_rates
 from .source import local_source_from_upload, local_source_from_url
-from .toc import discover_in_network_files
+from .toc import catalog_in_network_files, discover_in_network_files
+from .web import HTML_PAGE
 
 app = FastAPI(
     title="TIC data",
-    version="0.1.0",
-    description="Stream and filter Transparency in Coverage machine-readable files.",
+    version="0.2.0",
+    description="Map, stream, and filter Transparency in Coverage machine-readable files.",
 )
+
+
+@app.get("/", response_class=HTMLResponse)
+def home() -> HTMLResponse:
+    return HTMLResponse(HTML_PAGE)
 
 
 @app.get("/health")
@@ -59,6 +65,42 @@ def extract_from_url_csv(request: UrlExtractionRequest) -> PlainTextResponse:
             media_type="text/csv",
             headers={"Content-Disposition": 'attachment; filename="tic-rates.csv"'},
         )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/catalog/url")
+def catalog_from_url(request: TocRequest) -> dict:
+    try:
+        with local_source_from_url(str(request.url)) as path:
+            return catalog_in_network_files(
+                path,
+                plan_name=request.plan_name,
+                issuer_name=request.issuer_name,
+                plan_id=request.plan_id,
+                plan_sponsor_name=request.plan_sponsor_name,
+            )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/catalog/upload")
+def catalog_from_upload(
+    file: Annotated[UploadFile, File(...)],
+    plan_name: Annotated[str, Form()] = "",
+    issuer_name: Annotated[str, Form()] = "",
+    plan_id: Annotated[str, Form()] = "",
+    plan_sponsor_name: Annotated[str, Form()] = "",
+) -> dict:
+    try:
+        with local_source_from_upload(file.file, file.filename) as path:
+            return catalog_in_network_files(
+                path,
+                plan_name=plan_name or None,
+                issuer_name=issuer_name or None,
+                plan_id=plan_id or None,
+                plan_sponsor_name=plan_sponsor_name or None,
+            )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
