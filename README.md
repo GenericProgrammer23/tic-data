@@ -1,54 +1,125 @@
 # TIC data
 
-Tools for locating, streaming, filtering, and exporting **Transparency in Coverage (TiC)** machine-readable files without loading giant payer files into memory.
+A local browser app, API, and CLI for mapping **Transparency in Coverage (TiC)** machine-readable files and extracting negotiated rates for specific provider organizations.
 
-The primary use case is: give the project a payer TiC file (upload/local path or HTTPS URL), identify an organization by **NPI**, **TIN/EIN**, or **business name**, optionally restrict to CPT/HCPCS/etc. codes, and return the negotiated rates attached to that organization.
+The main workflow is:
 
-## What this MVP does
+1. upload a payer Table-of-Contents/index JSON or provide its URL;
+2. TIC data collapses thousands of employer-plan references into a deduplicated list of actual in-network rate files;
+3. choose the network/rate file;
+4. enter the provider organization's **TIN/EIN, NPI, or business name** and optional CPT/HCPCS filters;
+5. extract and export the matching negotiated rates.
 
-- Reads `.json` and `.json.gz` TiC in-network files.
-- Downloads remote files as a stream to temporary disk rather than RAM.
-- Uses streaming JSON parsing (`ijson`) for very large files.
-- Matches organizations by NPI, TIN/EIN, or `tin.business_name`.
-- Resolves root-level `provider_references` to negotiated rates.
-- Also handles files that embed `provider_groups` inside negotiated-rate objects.
-- Filters by billing code, billing-code type, place-of-service code, billing class, and negotiated type.
-- Exports JSON or flat CSV.
-- Reads TiC Table-of-Contents files and finds the in-network URLs associated with matching plans.
-- Provides both a command-line interface and a FastAPI service for URL ingestion or file upload.
+## Current capabilities
 
-## Important design choice
+- Browser UI at `/` for the complete workflow.
+- Reads `.json`, `.json.gz`, and `.zip` TiC files.
+- Downloads remote files to temporary disk rather than loading them into RAM.
+- Uses streaming JSON parsing (`ijson`) for very large disclosures.
+- Maps Table-of-Contents files to the actual in-network rate files.
+- Deduplicates signed URLs by canonical path, which is important for payer indexes such as Cigna's.
+- Builds a user-facing network catalog with:
+  - normalized network/file name;
+  - source classification (payer vs shared/affiliate network);
+  - file format;
+  - plan types;
+  - number of plan sponsors referencing the rate file;
+  - sample plan sponsors.
+- Matches providers by NPI, TIN/EIN, or `tin.business_name`.
+- Resolves root-level `provider_references` and embedded `provider_groups`.
+- Filters rates by billing code, billing-code type, place of service, billing class, and negotiated type.
+- JSON and CSV output.
+- CLI and FastAPI endpoints for automation.
 
-TiC in-network files can be extremely large. This project intentionally does **not** call `json.load()` on the whole file. For provider-reference files it makes two streaming passes: one to identify matching provider-group IDs and one to extract the rates tied to those IDs. URL inputs are downloaded to a temporary local file so both passes are possible.
+## Install and run the browser app
 
-Raw TiC files are ignored by git and are not intended to be committed to this repository.
-
-## Install
+Python 3.11+ is required.
 
 ```bash
 python -m venv .venv
-# Windows
-.venv\\Scripts\\activate
-# macOS/Linux
-# source .venv/bin/activate
-
-pip install -e .
 ```
 
-For development/tests:
+Windows PowerShell:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+pip install -e .
+uvicorn tic_data.service:app --reload
+```
+
+macOS/Linux:
 
 ```bash
-pip install -e ".[dev]"
-pytest
+source .venv/bin/activate
+pip install -e .
+uvicorn tic_data.service:app --reload
 ```
 
-## CLI examples
+Then open:
 
-### Local file, organization TIN, specific PT codes
+```text
+http://127.0.0.1:8000
+```
+
+The API documentation is available at:
+
+```text
+http://127.0.0.1:8000/docs
+```
+
+## Using a Cigna index
+
+Cigna's index is a Table-of-Contents file, not the negotiated-rate file itself. One index can contain tens of thousands of employer-plan rows that repeatedly reference a much smaller set of actual rate files.
+
+In the browser:
+
+1. **Load a payer index** — upload the Cigna index JSON or paste its URL.
+2. TIC data scans the index and displays the unique rate files/networks once.
+3. Filter by plan type such as `OAP`, `Local Plus`, `HMO`, or `PPO`, or search the network name.
+4. Select a network such as **National OAP**, **Pathwell OAP**, or **Arizona HMO**.
+5. Enter your provider TIN/EIN and/or NPI.
+6. Enter billing codes such as `97110`, `97112`, `97140`, and `97530`.
+7. Click **Find negotiated rates**.
+8. Review the results and download CSV.
+
+The application preserves the current signed URL from the index for downloading, while using a signature-free canonical URL only for deduplication.
+
+## Direct rate-file upload
+
+If you already downloaded an in-network MRF, you can skip the index step. The browser accepts:
+
+- `.json`
+- `.json.gz`
+- `.zip`
+
+Enter the provider identifiers and codes, upload the rate file under **Direct rate-file upload**, and search it locally.
+
+For ZIP archives, TIC data selects the largest JSON/JSON.GZ member, which matches the normal payer pattern of one large MRF plus small metadata/readme files.
+
+## CLI
+
+### Build a compact catalog from a payer index
+
+```bash
+tic-data catalog \
+  --file 2026-08-01_cigna-health-life-insurance-company_index.json \
+  --plan-name OAP
+```
+
+Optional index filters:
+
+- `--plan-name`
+- `--issuer-name`
+- `--plan-id`
+- `--plan-sponsor-name`
+
+EIN plan IDs are compared without punctuation, so `59-1031071` and `591031071` match.
+
+### Extract rates from an actual rate file
 
 ```bash
 tic-data extract \
-  --file payer-in-network.json.gz \
+  --url "https://payer.example/in-network.json.gz" \
   --tin 12-3456789 \
   --code 97110 \
   --code 97140 \
@@ -58,38 +129,33 @@ tic-data extract \
   --output rates.csv
 ```
 
-### Remote file, organization NPI
+A local ZIP works the same way:
 
 ```bash
 tic-data extract \
-  --url "https://payer.example/in-network.json.gz" \
+  --file payer-in-network.zip \
   --npi 1234567890 \
-  --code-type CPT \
-  --format json \
-  --output rates.json
+  --code 97110
 ```
-
-### Find the correct in-network file from a Table of Contents
-
-```bash
-tic-data toc \
-  --url "https://payer.example/table-of-contents.json" \
-  --plan-sponsor-name "Example Employer"
-```
-
-The `toc` command can filter by `--plan-name`, `--issuer-name`, `--plan-id`, and/or `--plan-sponsor-name`. Multiple supplied filters are ANDed.
 
 ## API
 
-Start the service:
+### Catalog an index URL
 
-```bash
-uvicorn tic_data.service:app --reload
+`POST /catalog/url`
+
+```json
+{
+  "url": "https://payer.example/index.json",
+  "plan_name": "OAP"
+}
 ```
 
-Then open `/docs` for Swagger UI.
+### Upload an index
 
-### Extract from URL
+`POST /catalog/upload` as multipart form data with `file` and optional plan filters.
+
+### Extract from a rate-file URL
 
 `POST /extract/url`
 
@@ -112,55 +178,37 @@ Then open `/docs` for Swagger UI.
 }
 ```
 
-Use `POST /extract/url.csv` with the same JSON body for CSV output.
+Use `POST /extract/url.csv` for CSV output.
 
-### Upload a file
+### Upload a rate file
 
-`POST /extract/upload` as `multipart/form-data` with:
+`POST /extract/upload` as multipart form data with:
 
-- `file`: `.json` or `.json.gz`
-- `organization_json`: e.g. `{"tins":["12-3456789"]}`
-- `filters_json`: optional, e.g. `{"billing_codes":["97110"]}`
+- `file`
+- `organization_json`, e.g. `{"tins":["12-3456789"]}`
+- optional `filters_json`, e.g. `{"billing_codes":["97110"]}`
 
-### Read a Table of Contents
+## Large-file behavior
 
-`POST /toc/url`
+National payer files can be many gigabytes. URL inputs are downloaded to temporary disk because provider-reference MRFs generally require more than one streaming pass: first to determine which provider group IDs belong to the organization, then to find the negotiated rates referencing those groups.
 
-```json
-{
-  "url": "https://payer.example/table-of-contents.json",
-  "plan_sponsor_name": "Example Employer"
-}
-```
+This avoids loading the full MRF into RAM, but the initial download can still be large and slow. A future persistent DuckDB/Parquet cache would make repeated queries against the same payer file substantially faster.
 
-## Output fields
+## Output
 
 Rate rows include:
 
-- billing code type/version and billing code
-- item/service name and description
-- negotiation arrangement
-- negotiated type and negotiated rate
-- expiration date
-- place-of-service codes
-- billing class and setting
-- billing-code modifiers
-- provider-reference IDs or embedded provider details
-- additional information when supplied by the payer
-
-The JSON response also includes the publisher metadata, matching provider group IDs, matched provider identifiers, rate count, and a `truncated` flag when the configured result limit is reached.
-
-## Scope / next extensions
-
-This first version focuses on **in-network negotiated rates** and Table-of-Contents discovery. Logical next additions are:
-
-1. payer-specific URL/index adapters when a payer publishes a custom index page;
-2. resumable/parallel ingestion for multi-hundred-GB files;
-3. DuckDB/Parquet indexing so a downloaded file only has to be parsed once;
-4. organization profiles that store a known list of NPIs/TINs;
-5. batch comparisons across payers and CPT codes;
-6. normalized Excel output for contracting analysis.
+- billing code type/version and billing code;
+- item/service name and description;
+- negotiation arrangement;
+- negotiated type and negotiated rate;
+- expiration date;
+- place-of-service codes;
+- billing class and setting;
+- billing-code modifiers;
+- provider-reference IDs or embedded provider details;
+- additional payer information when supplied.
 
 ## Data handling
 
-TiC machine-readable files are public payer disclosures, but organization identifiers and downloaded source files can still be operationally sensitive. The application writes URL/upload sources only to temporary storage and deletes them when processing is complete. Do not commit downloaded payer files or credentials.
+Downloaded URL sources and uploaded files are written only to temporary storage during a request and removed afterward. Raw payer MRFs are ignored by git and should not be committed to the repository.
