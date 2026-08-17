@@ -13,4 +13,5 @@ def test_home_ui_and_health():
     assert 'id="codeInput"' in page.text
     assert 'id="codeChips"' in page.text
     assert "Troubleshooting details" in page.text
+    assert "Select a network intentionally" in page.text
     assert client.get("/health").json() == {"status": "ok"}
