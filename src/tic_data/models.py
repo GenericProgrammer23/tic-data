@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from pydantic import BaseModel, Field, HttpUrl, model_validator
@@ -12,12 +12,14 @@ class OrganizationSelector(BaseModel):
     business_names: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def require_selector(self) -> "OrganizationSelector":
-        if not (self.npis or self.tins or self.business_names):
-            raise ValueError("Provide at least one NPI, TIN, or business name")
+    def normalize_and_require_selector(self) -> "OrganizationSelector":
+        # TiC files are inconsistent about punctuation in identifiers. Treat
+        # 12-3456789 and 123456789 as the same TIN (and likewise for NPIs).
         self.npis = [normalize_id(v) for v in self.npis if normalize_id(v)]
         self.tins = [normalize_id(v) for v in self.tins if normalize_id(v)]
         self.business_names = [v.strip() for v in self.business_names if v.strip()]
+        if not (self.npis or self.tins or self.business_names):
+            raise ValueError("Provide at least one NPI, TIN, or business name")
         return self
 
 
@@ -61,6 +63,7 @@ class ExtractionResult:
     matched_providers: list[ProviderMatch]
     rates: list[dict[str, Any]]
     truncated: bool = False
+    diagnostics: dict[str, Any] = field(default_factory=dict)
 
 
 def normalize_id(value: str | int | None) -> str:
