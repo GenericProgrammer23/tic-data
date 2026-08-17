@@ -82,7 +82,7 @@ In the browser:
 1. **Load a payer index** — upload the Cigna index JSON or paste its URL.
 2. TIC data scans the index and displays the unique rate files/networks once.
 3. Filter by plan type such as `OAP`, `Local Plus`, `HMO`, or `PPO`, or search the network name.
-4. Select a network such as **National OAP**, **Pathwell OAP**, or **Arizona HMO**.
+4. Deliberately select the network you want to query. The app does not silently choose the first Cigna/affiliate file for you. For a standard OAP comparison, start by filtering/searching for **National OAP**; use Pathwell, regional, or affiliate networks only when that is the network you intend to analyze.
 5. Enter your provider TIN/EIN and/or NPI. A TIN may be entered as either `12-3456789` or `123456789`; punctuation is ignored during matching.
 6. Enter a billing code and type a comma or press Enter. Each accepted code appears as a removable chip so you can confirm exactly what will be searched.
 7. Click **Find negotiated rates**.
