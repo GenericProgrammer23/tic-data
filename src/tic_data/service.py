@@ -294,8 +294,14 @@ def _run_extract_job(job_id: str, request: UrlExtractionRequest) -> None:
 def _update_job(job_id: str, **values: Any) -> None:
     with _JOBS_LOCK:
         job = _JOBS.get(job_id)
-        if job is not None:
-            job.update(values)
+        if job is None:
+            return
+        details = values.pop("details", None)
+        if details is not None:
+            merged_details = dict(job.get("details") or {})
+            merged_details.update(details)
+            job["details"] = merged_details
+        job.update(values)
 
 
 def _prune_jobs_locked() -> None:
