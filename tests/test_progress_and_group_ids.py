@@ -64,7 +64,7 @@ def test_provider_group_id_matches_number_to_string(tmp_path: Path):
     assert result.matched_provider_group_ids == {847392}
     assert result.diagnostics["matched_provider_group_ids"] == [847392]
     assert result.diagnostics["negotiated_rate_groups_linked_to_provider"] == 1
-    assert result.rates[0]["negotiated_rate"] == 52.18
+    assert float(result.rates[0]["negotiated_rate"]) == 52.18
 
 
 def test_parser_emits_named_progress_stages(tmp_path: Path):
