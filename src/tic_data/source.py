@@ -4,6 +4,7 @@ import gzip
 import shutil
 import tempfile
 import zipfile
+from collections.abc import Callable
 from contextlib import contextmanager
 from pathlib import Path
 from typing import BinaryIO, Iterator
@@ -13,6 +14,7 @@ import httpx
 
 
 DEFAULT_MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024 * 1024  # 100 GiB safety ceiling
+DownloadProgressCallback = Callable[[int, int | None], None]
 
 
 def _source_suffix(name: str | None) -> str:
@@ -30,6 +32,7 @@ def local_source_from_url(
     *,
     max_bytes: int = DEFAULT_MAX_DOWNLOAD_BYTES,
     timeout_seconds: float = 120.0,
+    progress_callback: DownloadProgressCallback | None = None,
 ) -> Iterator[Path]:
     suffix = _source_suffix(url)
     with tempfile.TemporaryDirectory(prefix="tic-data-") as directory:
@@ -44,14 +47,19 @@ def local_source_from_url(
         ) as response:
             response.raise_for_status()
             content_length = response.headers.get("content-length")
-            if content_length and int(content_length) > max_bytes:
+            total_bytes = int(content_length) if content_length and content_length.isdigit() else None
+            if total_bytes and total_bytes > max_bytes:
                 raise ValueError(f"Remote file exceeds {max_bytes:,} byte safety limit")
+            if progress_callback:
+                progress_callback(0, total_bytes)
             with path.open("wb") as target:
                 for chunk in response.iter_bytes(1024 * 1024):
                     downloaded += len(chunk)
                     if downloaded > max_bytes:
                         raise ValueError(f"Remote file exceeds {max_bytes:,} byte safety limit")
                     target.write(chunk)
+                    if progress_callback:
+                        progress_callback(downloaded, total_bytes)
         yield path
 
 
@@ -75,8 +83,6 @@ def _zip_member(archive: zipfile.ZipFile) -> zipfile.ZipInfo:
     candidates = json_files or files
     if not candidates:
         raise ValueError("ZIP archive does not contain a readable file")
-    # TiC ZIPs normally contain one MRF. If there are several, the data file is
-    # conventionally the largest member; metadata/readme files are much smaller.
     return max(candidates, key=lambda item: item.file_size)
 
 
@@ -90,7 +96,6 @@ def open_json_binary(path: Path) -> Iterator[BinaryIO]:
                 member = _zip_member(archive)
                 with archive.open(member, "r") as member_stream:
                     member_magic = member_stream.read(2)
-                    # ZipExtFile supports seek for stored/deflated members.
                     member_stream.seek(0)
                     if member.filename.lower().endswith(".gz") or member_magic == b"\x1f\x8b":
                         with gzip.GzipFile(fileobj=member_stream, mode="rb") as stream:
